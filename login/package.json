@@ -1,7 +1,7 @@
 {
-  "name": "register",
+  "name": "login",
   "version": "1.0.0",
-  "description": "Coffee Management registration microservice",
+  "description": "Coffee Management login microservice",
   "license": "ISC",
   "author": "",
   "type": "commonjs",
@@ -9,13 +9,13 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "seed:admin": "node seed-admin.js",
-    "check": "node --check index.js && node --check seed-admin.js"
+    "check": "node --check index.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "dotenv": "^18.0.5",
     "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.2",
     "mongoose": "^9.10.4"
   }
 }

@@ -1,0 +1,157 @@
+{
+  "info": {
+    "_postman_id": "9aa89347-33b8-45da-a74d-47fde874edc8",
+    "name": "Coffee Management Microservices",
+    "description": "Tests the Coffee Management API Gateway and service health endpoints. Run the requests in order with Collection Runner. Set adminEmail and adminPassword to the seeded admin credentials before running the Admin folder.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "gatewayBaseUrl", "value": "http://localhost:4000", "type": "string" },
+    { "key": "registrationBaseUrl", "value": "http://localhost:3001", "type": "string" },
+    { "key": "loginBaseUrl", "value": "http://localhost:3002", "type": "string" },
+    { "key": "customerName", "value": "Postman Customer", "type": "string" },
+    { "key": "customerEmail", "value": "", "type": "string" },
+    { "key": "customerPassword", "value": "Customer123!", "type": "string" },
+    { "key": "adminEmail", "value": "admin@example.com", "type": "string" },
+    { "key": "adminPassword", "value": "ChangeMe123!", "type": "string" },
+    { "key": "managedUserEmail", "value": "", "type": "string" },
+    { "key": "customerToken", "value": "", "type": "string" },
+    { "key": "adminToken", "value": "", "type": "string" },
+    { "key": "managedUserId", "value": "", "type": "string" },
+    { "key": "runId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "01 - Health Checks",
+      "item": [
+        {
+          "name": "Gateway Home",
+          "request": { "method": "GET", "header": [], "url": "{{gatewayBaseUrl}}/" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Gateway responds successfully', () => pm.response.to.have.status(200));", "pm.test('Gateway name is returned', () => pm.expect(pm.response.json().message).to.eql('Coffee Management API Gateway'));" ] } }]
+        },
+        {
+          "name": "Gateway Health",
+          "request": { "method": "GET", "header": [], "url": "{{gatewayBaseUrl}}/health" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Gateway is healthy', () => pm.response.to.have.status(200));", "pm.test('Status is ok', () => pm.expect(pm.response.json().status).to.eql('ok'));" ] } }]
+        },
+        {
+          "name": "Registration Service Health",
+          "request": { "method": "GET", "header": [], "url": "{{registrationBaseUrl}}/health" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Registration service is healthy', () => pm.response.to.have.status(200));" ] } }]
+        },
+        {
+          "name": "Login Service Health",
+          "request": { "method": "GET", "header": [], "url": "{{loginBaseUrl}}/health" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Login service is healthy', () => pm.response.to.have.status(200));" ] } }]
+        }
+      ]
+    },
+    {
+      "name": "02 - Customer Flow",
+      "item": [
+        {
+          "name": "Register Customer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"{{customerName}}\",\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"{{customerPassword}}\",\n  \"role\": \"admin\"\n}" },
+            "url": "{{gatewayBaseUrl}}/register",
+            "description": "The submitted admin role is intentional: the service must ignore it and create a customer."
+          },
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["const runId = Date.now().toString();", "pm.collectionVariables.set('runId', runId);", "pm.collectionVariables.set('customerEmail', `customer.${runId}@example.com`);" ] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Customer is created', () => pm.response.to.have.status(201));", "const body = pm.response.json();", "pm.test('Public registration forces customer role', () => pm.expect(body.role).to.eql('customer'));", "pm.test('Password hash is not exposed', () => pm.expect(body).not.to.have.property('passwordHash'));" ] } }
+          ]
+        },
+        {
+          "name": "Login Customer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"{{customerPassword}}\"\n}" },
+            "url": "{{gatewayBaseUrl}}/auth/login"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Customer login succeeds', () => pm.response.to.have.status(200));", "const body = pm.response.json();", "pm.test('JWT is returned', () => pm.expect(body.token).to.be.a('string').and.not.empty);", "if (body.token) pm.collectionVariables.set('customerToken', body.token);" ] } }]
+        },
+        {
+          "name": "Customer Cannot List Users",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}", "type": "text" }],
+            "url": "{{gatewayBaseUrl}}/admin/users"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Customer is forbidden from admin route', () => pm.response.to.have.status(403));" ] } }]
+        }
+      ]
+    },
+    {
+      "name": "03 - Authentication Errors",
+      "item": [
+        {
+          "name": "Login With Wrong Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"wrong-password\"\n}" },
+            "url": "{{gatewayBaseUrl}}/auth/login"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Wrong password is rejected', () => pm.response.to.have.status(401));" ] } }]
+        },
+        {
+          "name": "Admin Route Without Token",
+          "request": { "method": "GET", "header": [], "url": "{{gatewayBaseUrl}}/admin/users" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Missing bearer token is rejected', () => pm.response.to.have.status(401));" ] } }]
+        }
+      ]
+    },
+    {
+      "name": "04 - Admin Flow",
+      "description": "Set collection variables adminEmail and adminPassword to the account created by register/seed-admin.js.",
+      "item": [
+        {
+          "name": "Login Admin",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}" },
+            "url": "{{gatewayBaseUrl}}/auth/login"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Admin login succeeds', () => pm.response.to.have.status(200));", "const body = pm.response.json();", "pm.test('Logged-in user is admin', () => pm.expect(body.user.role).to.eql('admin'));", "if (body.token) pm.collectionVariables.set('adminToken', body.token);" ] } }]
+        },
+        {
+          "name": "Create Barista",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Barista\",\n  \"email\": \"{{managedUserEmail}}\",\n  \"password\": \"Barista123!\",\n  \"role\": \"barista\"\n}" },
+            "url": "{{gatewayBaseUrl}}/admin/users"
+          },
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["const runId = Date.now().toString();", "pm.collectionVariables.set('managedUserEmail', `barista.${runId}@example.com`);" ] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Barista is created', () => pm.response.to.have.status(201));", "const body = pm.response.json();", "pm.test('Created role is barista', () => pm.expect(body.role).to.eql('barista'));", "if (body.id) pm.collectionVariables.set('managedUserId', body.id);" ] } }
+          ]
+        },
+        {
+          "name": "List All Users",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }], "url": "{{gatewayBaseUrl}}/admin/users" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Admin can list users', () => pm.response.to.have.status(200));", "pm.test('Response is an array', () => pm.expect(pm.response.json()).to.be.an('array'));" ] } }]
+        },
+        {
+          "name": "Get User By ID",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }], "url": "{{gatewayBaseUrl}}/admin/users/{{managedUserId}}" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Admin can get one user', () => pm.response.to.have.status(200));", "pm.test('Correct user is returned', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('managedUserId')));" ] } }]
+        },
+        {
+          "name": "Delete User By ID",
+          "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }], "url": "{{gatewayBaseUrl}}/admin/users/{{managedUserId}}" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Admin can delete the test user', () => pm.response.to.have.status(200));" ] } }]
+        },
+        {
+          "name": "Confirm Deleted User Is Missing",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }], "url": "{{gatewayBaseUrl}}/admin/users/{{managedUserId}}" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Deleted user returns not found', () => pm.response.to.have.status(404));" ] } }]
+        }
+      ]
+    }
+  ]
+}

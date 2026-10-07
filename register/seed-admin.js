@@ -1,31 +1,28 @@
 require("dotenv").config();
+
+//Note: This script is used to seed the initial admin user into the database.
+//Note: It should be run only once during the initial setup of the application.
+
 const bcrypt = require("bcryptjs");
 const mongoose = require("mongoose");
-
-const User = mongoose.model(
-  "User",
-  new mongoose.Schema(
-    {
-      name: { type: String, required: true, trim: true },
-      email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-      passwordHash: { type: String, required: true, select: false },
-      role: { type: String, enum: ["admin", "barista", "customer"], required: true },
-    },
-    { collection: "users", timestamps: { createdAt: true, updatedAt: false } },
-  ),
-);
+const { connectDB } = require("./dbconnect");
+const User = require("./userModel");
 
 async function seedAdmin() {
-  const { MONGO_URI, ADMIN_NAME, ADMIN_EMAIL, ADMIN_PASSWORD } = process.env;
-  if (!MONGO_URI || !ADMIN_NAME || !ADMIN_EMAIL || !ADMIN_PASSWORD) {
-    throw new Error("MONGO_URI, ADMIN_NAME, ADMIN_EMAIL, and ADMIN_PASSWORD are required");
+  const { ADMIN_NAME, ADMIN_EMAIL, ADMIN_PASSWORD } = process.env;
+  if (!ADMIN_NAME || !ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    throw new Error(
+      " ADMIN_NAME, ADMIN_EMAIL, and ADMIN_PASSWORD are required",
+    );
   }
   if (ADMIN_PASSWORD.length < 8) {
     throw new Error("ADMIN_PASSWORD must contain at least 8 characters");
   }
 
-  await mongoose.connect(MONGO_URI);
+  await connectDB();
+
   const email = ADMIN_EMAIL.trim().toLowerCase();
+
   if (await User.exists({ email })) {
     console.log(`Admin seed skipped: ${email} already exists`);
     return;

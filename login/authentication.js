@@ -3,14 +3,14 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 require("dotenv").config();
 
+const User = require("./userModel.js");
 const dbconnect = require("./dbconnect.js");
-const UserModel = require("./userModel.js");
 
 const app = express();
-app.use(express.json());
-
+const PORT = process.env.PORT || 3002;
 const JWT_SECRETE = process.env.JWT_SECRETE;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
+
+app.use(express.json());
 
 //1. Purpose: For health checks of the service
 app.get("/health", (req, res) => {
@@ -18,38 +18,33 @@ app.get("/health", (req, res) => {
 });
 
 //2. Purpose: For user login and JWT token generation
+
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (
-      typeof email !== "string" ||
-      typeof password !== "string" ||
-      !email.trim() ||
-      !password
-    ) {
+    if (!email || !password) {
       return res.status(400).json({
         message: "Email and password are required",
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    // Find the user by email only.
+    // Never trust a role submitted by the client.
+    const user = await User.findOne({
+      emailid: email.trim().toLowerCase(),
+    }).select("+passwordHash");
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-      return res.status(400).json({
-        message: "Enter a valid email address",
+    if (!user) {
+      return res.status(401).json({
+        message: "Invalid email or password",
       });
     }
 
-    const user = await UserModel.findOne({
-      email: normalizedEmail,
-    }).select("+passwordHash");
+    //Note: Comparing Password with the hashed password stored in the database using bcrypt.
+    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
 
-    const passwordMatches = user
-      ? await bcrypt.compare(password, user.passwordHash)
-      : false;
-
-    if (!user || !passwordMatches) {
+    if (!passwordMatches) {
       return res.status(401).json({
         message: "Invalid email or password",
       });
@@ -58,24 +53,19 @@ app.post("/login", async (req, res) => {
     const token = jwt.sign(
       {
         userId: user._id.toString(),
-        email: user.email,
-        role: user.role,
+        email: user.emailid,
+        role: user.role, // Role comes from the database
       },
       JWT_SECRETE,
       {
-        expiresIn: JWT_EXPIRES_IN,
+        expiresIn: "24h",
+        algorithm: "HS256",
       },
     );
 
     return res.status(200).json({
       token,
       message: "Login successful",
-      user: {
-        id: user._id.toString(),
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
     });
   } catch (error) {
     console.error("Login error:", error.message);
@@ -86,20 +76,19 @@ app.post("/login", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3002;
-
 async function startServer() {
   try {
     if (!JWT_SECRETE) {
-      throw new Error("JWT_SECRETE is missing from the .env file");
+      throw new Error("JWT_SECRETE is missing");
     }
 
     await dbconnect.connectDB();
+
     app.listen(PORT, () => {
       console.log(`Authentication Service is running on port ${PORT}`);
     });
   } catch (error) {
-    console.error("Authentication Service failed to start:", error.message);
+    console.error("Failed to start service:", error.message);
     process.exit(1);
   }
 }

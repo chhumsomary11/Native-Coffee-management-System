@@ -1,30 +1,16 @@
 require("dotenv").config();
+
 const bcrypt = require("bcryptjs");
 const express = require("express");
-const mongoose = require("mongoose");
-
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
 const ADMIN_CREATED_ROLES = new Set(["admin", "barista"]);
 
+const { connectDB } = require("./dbconnect.js");
+const User = require("./userModel.js");
+
 app.disable("x-powered-by");
 app.use(express.json({ limit: "20kb" }));
-
-const userSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true, trim: true, minlength: 2, maxlength: 100 },
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    passwordHash: { type: String, required: true, select: false },
-    role: {
-      type: String,
-      enum: ["admin", "barista", "customer"],
-      default: "customer",
-    },
-  },
-  { collection: "users", timestamps: { createdAt: true, updatedAt: false } },
-);
-
-const User = mongoose.model("User", userSchema);
 
 function normalizeEmail(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -34,7 +20,8 @@ function validateInput({ name, email, password }) {
   if (typeof name !== "string" || name.trim().length < 2) {
     return "Name must contain at least 2 characters";
   }
-  if (!email || !/^\S+@\S+\.\S+$/.test(email)) return "A valid email is required";
+  if (!email || !/^\S+@\S+\.\S+$/.test(email))
+    return "A valid email is required";
   if (typeof password !== "string" || password.length < 8) {
     return "Password must contain at least 8 characters";
   }
@@ -52,7 +39,11 @@ function toPublicUser(user) {
 
 async function createUser({ name, email, password, role }) {
   const normalizedEmail = normalizeEmail(email);
-  const validationError = validateInput({ name, email: normalizedEmail, password });
+  const validationError = validateInput({
+    name,
+    email: normalizedEmail,
+    password,
+  });
   if (validationError) {
     const error = new Error(validationError);
     error.status = 400;
@@ -73,8 +64,10 @@ async function createUser({ name, email, password, role }) {
   });
 }
 
+// 1. Purpose: For health checks of the service
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 
+//2. Purpose: for normal user registration, always creates a customer role.   (Public)
 app.post("/register", async (req, res, next) => {
   try {
     // Ignore a public role value: public registration always creates a customer.
@@ -85,13 +78,15 @@ app.post("/register", async (req, res, next) => {
   }
 });
 
+//3. Purpose: For admin to create users with role as admin or barista.        (Admin-only)
 app.post("/users", async (req, res, next) => {
   try {
-    // Trust this only behind the Gateway and a private service port.
+    //Note:  Trust this only behind the Gateway and a private service port.
     if (req.get("x-user-role") !== "admin") {
       return res.status(403).json({ error: "Forbidden" });
     }
 
+    //Note:  Check if the user has role as admin or barista, otherwise return an error.
     const { name, email, password, role } = req.body;
     if (!ADMIN_CREATED_ROLES.has(role)) {
       return res.status(400).json({ error: "Role must be admin or barista" });
@@ -99,6 +94,57 @@ app.post("/users", async (req, res, next) => {
 
     const user = await createUser({ name, email, password, role });
     return res.status(201).json(toPublicUser(user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// 4. Purpose: For admin to get a list of all users. (Admin-only)
+app.get("/users", async (req, res, next) => {
+  try {
+    //Note:  Trust this only behind the Gateway and a private service port.
+    if (req.get("x-user-role") !== "admin") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const users = await User.find().select("-passwordHash");
+    return res.status(200).json(users.map(toPublicUser));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// 5. Purpose: For admin to get a specific user by ID. (Admin-only)
+app.get("/users/:id", async (req, res, next) => {
+  try {
+    //Note:  Trust this only behind the Gateway and a private service port.
+    if (req.get("x-user-role") !== "admin") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const user = await User.findById(req.params.id).select("-passwordHash");
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    return res.status(200).json(toPublicUser(user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// 6. Purpose: For admin to delete a specific user by ID. (Admin-only)
+app.delete("/users/:id", async (req, res, next) => {
+  try {
+    //Note:  Trust this only behind the Gateway and a private service port.
+    if (req.get("x-user-role") !== "admin") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    return res.status(200).json({ message: "User deleted successfully" });
   } catch (error) {
     return next(error);
   }
@@ -125,9 +171,10 @@ app.use((error, req, res, next) => {
 });
 
 async function start() {
-  if (!process.env.MONGO_URI) throw new Error("MONGO_URI is required");
-  await mongoose.connect(process.env.MONGO_URI);
-  app.listen(PORT, () => console.log(`Registration service listening on port ${PORT}`));
+  await connectDB();
+  app.listen(PORT, () =>
+    console.log(`Registration service listening on port ${PORT}`),
+  );
 }
 
 if (require.main === module) {

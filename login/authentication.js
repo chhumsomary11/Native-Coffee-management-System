@@ -32,7 +32,7 @@ app.post("/login", async (req, res) => {
     // Find the user by email only.
     // Never trust a role submitted by the client.
     const user = await User.findOne({
-      emailid: email.trim().toLowerCase(),
+      email: email.trim().toLowerCase(),
     }).select("+passwordHash");
 
     if (!user) {
@@ -53,7 +53,7 @@ app.post("/login", async (req, res) => {
     const token = jwt.sign(
       {
         userId: user._id.toString(),
-        email: user.emailid,
+        email: user.email,
         role: user.role, // Role comes from the database
       },
       JWT_SECRETE,

@@ -6,13 +6,20 @@ const { createProxyMiddleware } = require("http-proxy-middleware");
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
-const { JWT_SECRETE, REGISTRATION_SERVICE_URL, LOGIN_SERVICE_URL } =
-  process.env;
+const {
+  JWT_SECRETE,
+  REGISTRATION_SERVICE_URL,
+  LOGIN_SERVICE_URL,
+  MENU_SERVICE_URL,
+  INVENTORY_SERVICE_URL,
+} = process.env;
 
 for (const [name, value] of Object.entries({
   JWT_SECRETE,
   REGISTRATION_SERVICE_URL,
   LOGIN_SERVICE_URL,
+  MENU_SERVICE_URL,
+  INVENTORY_SERVICE_URL,
 })) {
   if (!value) throw new Error(`${name} is required in the .env file`);
 }
@@ -48,9 +55,16 @@ function authenticateToken(req, res, next) {
   }
 }
 
+// Note: Only admin users can access certain routes.
 function requireAdmin(req, res, next) {
   if (req.user.role !== "admin") {
     return res.status(403).json({ error: "Admin access required" });
+  }
+  return next();
+}
+function requireAdminOrBarista(req, res, next) {
+  if (!["admin", "barista"].includes(req.user.role)) {
+    return res.status(403).json({ error: "Admin or Barista access required" });
   }
   return next();
 }
@@ -106,6 +120,9 @@ app.post(
 // Mounting at /admin strips that prefix: /admin/users becomes /users.
 const adminRoutes = express.Router();
 const registrationProxy = serviceProxy(REGISTRATION_SERVICE_URL);
+const menuProxy = serviceProxy(MENU_SERVICE_URL);
+const inventoryProxy = serviceProxy(INVENTORY_SERVICE_URL);
+
 adminRoutes.use(authenticateToken, requireAdmin);
 adminRoutes.route("/users").get(registrationProxy).post(registrationProxy);
 adminRoutes
@@ -113,6 +130,30 @@ adminRoutes
   .get(registrationProxy)
   .delete(registrationProxy);
 app.use("/admin", adminRoutes);
+
+//Note: Menu servic mounting
+// Authenticated users can view menu items.
+app.get("/menu", authenticateToken, menuProxy);
+app.get("/menu/:id", authenticateToken, menuProxy);
+
+// Only admin and barista can manage menu items.
+app.post("/menu", authenticateToken, requireAdmin, menuProxy);
+app.put("/menu/:id", authenticateToken, requireAdmin, menuProxy);
+app.delete("/menu/:id", authenticateToken, requireAdmin, menuProxy);
+
+//NOTE: Inventory service mounting
+//Either admin or barista can view inventory items. But not customers
+app.get("/inventory", authenticateToken, requireAdminOrBarista, inventoryProxy);
+app.get(
+  "/inventory/low",
+  authenticateToken,
+  requireAdminOrBarista,
+  inventoryProxy,
+);
+// Only admin can manage inventory items.
+app.post("/inventory", authenticateToken, requireAdmin, inventoryProxy);
+app.put("/inventory/:id", authenticateToken, requireAdmin, inventoryProxy);
+app.delete("/inventory/:id", authenticateToken, requireAdmin, inventoryProxy);
 
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));
 

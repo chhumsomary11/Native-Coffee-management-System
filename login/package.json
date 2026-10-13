@@ -7,9 +7,9 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js",
-    "check": "node --check index.js"
+    "start": "node authentication.js",
+    "dev": "node --watch authentication.js",
+    "check": "node --check authentication.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

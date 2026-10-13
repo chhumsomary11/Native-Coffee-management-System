@@ -66,11 +66,47 @@ function validateObjectId(req, res, next) {
   return next();
 }
 
+function validateRecipe(recipe) {
+  if (!Array.isArray(recipe)) {
+    return "Recipe must be an array";
+  }
+
+  const stockItemIds = new Set();
+  for (const item of recipe) {
+    if (!item || !mongoose.isObjectIdOrHexString(item.stockItemId)) {
+      return "Every recipe item requires a valid stockItemId";
+    }
+    if (
+      typeof item.qty !== "number" ||
+      !Number.isFinite(item.qty) ||
+      item.qty <= 0
+    ) {
+      return "Every recipe quantity must be greater than 0";
+    }
+
+    const stockItemId = item.stockItemId.toString();
+    if (stockItemIds.has(stockItemId)) {
+      return `Recipe contains duplicate stockItemId: ${stockItemId}`;
+    }
+    stockItemIds.add(stockItemId);
+  }
+
+  return null;
+}
+
+function validateRecipeBody(req, res, next) {
+  if (!("recipe" in req.body)) return next();
+
+  const error = validateRecipe(req.body.recipe);
+  if (error) return res.status(400).json({ error });
+  return next();
+}
+
 // Health checks are called directly inside the private network.
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 
 // Admin: create a drink.
-app.post("/menu", allowAdmin, async (req, res, next) => {
+app.post("/menu", allowAdmin, validateRecipeBody, async (req, res, next) => {
   try {
     const { name, price, category, description, available, recipe } = req.body;
     const drink = await Drink.create({
@@ -94,7 +130,10 @@ app.get("/menu", allowAllUsers, async (req, res, next) => {
     const filter = {};
 
     if (req.query.category !== undefined) {
-      if (typeof req.query.category !== "string" || !req.query.category.trim()) {
+      if (
+        typeof req.query.category !== "string" ||
+        !req.query.category.trim()
+      ) {
         return res.status(400).json({ error: "Invalid category filter" });
       }
       filter.category = req.query.category.trim().toLowerCase();
@@ -139,11 +178,14 @@ app.put(
   "/menu/:id",
   allowAdmin,
   validateObjectId,
+  validateRecipeBody,
   async (req, res, next) => {
     try {
       const fields = Object.keys(req.body);
       if (fields.length === 0) {
-        return res.status(400).json({ error: "At least one field is required" });
+        return res
+          .status(400)
+          .json({ error: "At least one field is required" });
       }
 
       const invalidField = fields.find((field) => !EDITABLE_FIELDS.has(field));
@@ -191,6 +233,10 @@ app.use((error, req, res, next) => {
   if (error instanceof SyntaxError && error.status === 400 && "body" in error) {
     return res.status(400).json({ error: "Invalid JSON body" });
   }
+
+  if (error.code === 11000) {
+    return res.status(409).json({ error: "Duplicate drink name" });
+  }
   if (error.name === "ValidationError") {
     const message = Object.values(error.errors)
       .map((item) => item.message)
@@ -204,6 +250,9 @@ app.use((error, req, res, next) => {
 
 async function start() {
   await connectDB();
+
+  // Ensure required indexes exist before accepting requests.
+  await Drink.createIndexes();
   return app.listen(PORT, () =>
     console.log(`Menu service listening on port ${PORT}`),
   );
@@ -216,4 +265,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, start, Drink };
+module.exports = { app, start, Drink, validateRecipe };

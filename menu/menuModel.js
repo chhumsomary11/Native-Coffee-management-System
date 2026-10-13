@@ -56,12 +56,24 @@ const drinkSchema = new mongoose.Schema(
     recipe: {
       type: [recipeItemSchema],
       default: [],
+      validate: {
+        validator(items) {
+          const ids = items.map((item) => item.stockItemId.toString());
+          return new Set(ids).size === ids.length;
+        },
+        message: "Recipe cannot contain duplicate stock items",
+      },
     },
   },
   {
     timestamps: true,
     collection: "drinks",
   },
+);
+
+drinkSchema.index(
+  { name: 1 },
+  { unique: true, collation: { locale: "en", strength: 2 } },
 );
 
 module.exports = mongoose.models.Drink || mongoose.model("Drink", drinkSchema);

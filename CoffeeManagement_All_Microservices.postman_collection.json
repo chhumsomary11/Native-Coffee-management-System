@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "4ce6f9f1-0d65-42ef-b2c1-1cfe7ce00551",
     "name": "Coffee Management - All Microservices",
-    "description": "Gateway-first tests for the nine-service Coffee Management contract. IMPLEMENTED in this checkout: Gateway, Registration, Login, Menu. CONTRACT ONLY (expected to fail until implemented and mounted): Inventory, Order, Payment, Staff/Shift, Sales Report. Run folders in numeric order. Before running, set adminEmail/adminPassword to the seeded administrator credentials. All application traffic uses gatewayBaseUrl; direct service URLs are used only for health diagnostics.",
+    "description": "Gateway-first tests for the nine-service Coffee Management contract. IMPLEMENTED in this checkout: Gateway, Registration, Login, Menu, Inventory, Order, Payment. CONTRACT ONLY (expected to fail until implemented and mounted): Staff/Shift and Sales Report. Run folders in numeric order. Before running, set adminEmail/adminPassword to the seeded administrator credentials. All application traffic uses gatewayBaseUrl; direct service URLs are used only for health diagnostics.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -45,10 +45,10 @@
         { "name": "Registration Health", "request": { "method": "GET", "header": [], "url": "{{registrationBaseUrl}}/health" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Registration is healthy', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
         { "name": "Login Health", "request": { "method": "GET", "header": [], "url": "{{loginBaseUrl}}/health" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Login is healthy', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
         { "name": "Menu Health", "request": { "method": "GET", "header": [], "url": "{{menuBaseUrl}}/health" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Menu is healthy', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
-        { "name": "[CONTRACT] Inventory Health", "request": { "method": "GET", "header": [], "url": "{{inventoryBaseUrl}}/health", "description": "Not implemented in the current checkout." }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Inventory is healthy when implemented', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
-        { "name": "[CONTRACT] Order A Health", "request": { "method": "GET", "header": [], "url": "{{orderABaseUrl}}/health", "description": "Not implemented in the current checkout." }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Order A is healthy when implemented', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
-        { "name": "[CONTRACT] Order B Health", "request": { "method": "GET", "header": [], "url": "{{orderBBaseUrl}}/health", "description": "Second Order instance for load-balancer testing." }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Order B is healthy when implemented', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
-        { "name": "[CONTRACT] Payment Health", "request": { "method": "GET", "header": [], "url": "{{paymentBaseUrl}}/health", "description": "Not implemented in the current checkout." }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Payment is healthy when implemented', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
+        { "name": "Inventory Health", "request": { "method": "GET", "header": [], "url": "{{inventoryBaseUrl}}/health" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Inventory is healthy', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
+        { "name": "Order A Health", "request": { "method": "GET", "header": [], "url": "{{orderABaseUrl}}/health" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Order A is healthy', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
+        { "name": "Order B Health (Optional Local Instance)", "request": { "method": "GET", "header": [], "url": "{{orderBBaseUrl}}/health", "description": "Second Order instance for load-balancer testing; skip until Order B is running." }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Order B is healthy when running', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
+        { "name": "Payment Health", "request": { "method": "GET", "header": [], "url": "{{paymentBaseUrl}}/health" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Payment is healthy', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
         { "name": "[CONTRACT] Staff Health", "request": { "method": "GET", "header": [], "url": "{{staffBaseUrl}}/health", "description": "Not implemented in the current checkout." }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Staff is healthy when implemented', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
         { "name": "[CONTRACT] Report Health", "request": { "method": "GET", "header": [], "url": "{{reportBaseUrl}}/health", "description": "Not implemented in the current checkout." }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Report is healthy when implemented', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] }
       ]
@@ -102,8 +102,8 @@
       ]
     },
     {
-      "name": "02 - Inventory [CONTRACT - NOT IMPLEMENTED]",
-      "description": "These requests follow the supplied contract but the service and Gateway routes do not exist in this checkout yet.",
+      "name": "02 - Inventory",
+      "description": "Implemented Inventory service requests through the Gateway.",
       "item": [
         { "name": "Admin Creates Stock Item", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{adminToken}}" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Coffee Beans {{runId}}\",\n  \"unit\": \"gram\",\n  \"quantity\": 1000,\n  \"lowThreshold\": 200\n}" }, "url": "{{gatewayBaseUrl}}/inventory" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Stock item is created', () => pm.response.to.have.status(201));", "const body = pm.response.json();", "const id = body.id || body._id;", "if (id) pm.collectionVariables.set('stockItemId', id);"], "type": "text/javascript" } }] },
         { "name": "Barista Lists Inventory", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{baristaToken}}" }], "url": "{{gatewayBaseUrl}}/inventory" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Barista can list inventory', () => pm.response.to.have.status(200));", "pm.test('Items array is returned', () => pm.expect(pm.response.json().items).to.be.an('array'));"], "type": "text/javascript" } }] },
@@ -124,8 +124,8 @@
       ]
     },
     {
-      "name": "04 - Orders [CONTRACT - NOT IMPLEMENTED]",
-      "description": "Contract tests for the planned load-balanced Order service.",
+      "name": "04 - Orders",
+      "description": "Implemented Order service tests; X-Served-By supports later load-balancer proof.",
       "item": [
         { "name": "Customer Places Order", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{customerToken}}" }], "body": { "mode": "raw", "raw": "{\n  \"items\": [\n    { \"drinkId\": \"{{drinkId}}\", \"qty\": 2 }\n  ]\n}" }, "url": "{{gatewayBaseUrl}}/orders" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Order is created', () => pm.response.to.have.status(201));", "const body = pm.response.json();", "const id = body.id || body._id;", "if (id) pm.collectionVariables.set('orderId', id);", "if (body.total !== undefined) pm.collectionVariables.set('orderTotal', body.total);", "pm.test('Order starts pending and unpaid', () => { pm.expect(body.status).to.eql('pending'); pm.expect(body.paymentStatus).to.eql('unpaid'); });", "pm.test('Load balancer identifies instance', () => pm.expect(pm.response.headers.get('X-Served-By')).to.be.oneOf(['order-A', 'order-B']));"], "type": "text/javascript" } }] },
         { "name": "Customer Lists Own Orders", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }], "url": "{{gatewayBaseUrl}}/orders" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer lists own orders', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
@@ -134,7 +134,7 @@
       ]
     },
     {
-      "name": "05 - Payments [CONTRACT - NOT IMPLEMENTED]",
+      "name": "05 - Payments",
       "description": "Run after an order is created. The payment amount is captured automatically from the order response.",
       "item": [
         { "name": "Customer Pays Own Order", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{customerToken}}" }], "body": { "mode": "raw", "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"amount\": {{orderTotal}},\n  \"method\": \"card\"\n}" }, "url": "{{gatewayBaseUrl}}/payments" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Payment is recorded', () => pm.response.to.have.status(201));", "pm.test('Payment status is paid', () => pm.expect(pm.response.json().status).to.eql('paid'));"], "type": "text/javascript" } }] },
@@ -144,7 +144,7 @@
       ]
     },
     {
-      "name": "06 - Order Status Flow [CONTRACT - NOT IMPLEMENTED]",
+      "name": "06 - Order Status Flow",
       "item": [
         { "name": "Barista Sets Preparing", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{baristaToken}}" }], "body": { "mode": "raw", "raw": "{ \"status\": \"preparing\" }" }, "url": "{{gatewayBaseUrl}}/orders/{{orderId}}/status" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Order moves to preparing', () => pm.response.to.have.status(200));", "pm.test('Status is preparing', () => pm.expect(pm.response.json().status).to.eql('preparing'));"], "type": "text/javascript" } }] },
         { "name": "Barista Sets Ready", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{baristaToken}}" }], "body": { "mode": "raw", "raw": "{ \"status\": \"ready\" }" }, "url": "{{gatewayBaseUrl}}/orders/{{orderId}}/status" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Order moves to ready', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
@@ -186,7 +186,7 @@
       "item": [
         { "name": "[CONTRACT] Delete Shift", "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{gatewayBaseUrl}}/shifts/{{shiftId}}" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Shift is deleted', () => pm.response.to.have.status(204));"], "type": "text/javascript" } }] },
         { "name": "Delete Test Drink", "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{gatewayBaseUrl}}/menu/{{drinkId}}" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Drink is deleted', () => pm.response.to.have.status(204));"], "type": "text/javascript" } }] },
-        { "name": "[CONTRACT] Delete Stock Item", "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{gatewayBaseUrl}}/inventory/{{stockItemId}}" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Stock item is deleted', () => pm.response.to.have.status(204));"], "type": "text/javascript" } }] },
+        { "name": "Delete Stock Item", "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{gatewayBaseUrl}}/inventory/{{stockItemId}}" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Stock item is deleted', () => pm.response.to.have.status(204));"], "type": "text/javascript" } }] },
         { "name": "Delete Test Barista Account", "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{gatewayBaseUrl}}/admin/users/{{baristaId}}" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Barista account is deleted', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] }
       ]
     }

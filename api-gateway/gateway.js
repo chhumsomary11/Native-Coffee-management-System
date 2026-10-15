@@ -12,6 +12,8 @@ const {
   LOGIN_SERVICE_URL,
   MENU_SERVICE_URL,
   INVENTORY_SERVICE_URL,
+  ORDER_SERVICE_URL,
+  PAYMENT_SERVICE_URL,
 } = process.env;
 
 for (const [name, value] of Object.entries({
@@ -20,6 +22,8 @@ for (const [name, value] of Object.entries({
   LOGIN_SERVICE_URL,
   MENU_SERVICE_URL,
   INVENTORY_SERVICE_URL,
+  ORDER_SERVICE_URL,
+  PAYMENT_SERVICE_URL,
 })) {
   if (!value) throw new Error(`${name} is required in the .env file`);
 }
@@ -39,6 +43,8 @@ function authenticateToken(req, res, next) {
       typeof user !== "object" ||
       typeof user.userId !== "string" ||
       !user.userId ||
+      typeof user.name !== "string" ||
+      !user.name.trim() ||
       typeof user.email !== "string" ||
       !user.email ||
       !["admin", "barista", "customer"].includes(user.role)
@@ -69,6 +75,20 @@ function requireAdminOrBarista(req, res, next) {
   return next();
 }
 
+function requireAdminOrCustomer(req, res, next) {
+  if (!["admin", "customer"].includes(req.user.role)) {
+    return res.status(403).json({ error: "Admin or Customer access required" });
+  }
+  return next();
+}
+
+function requireCustomerOrBarista(req, res, next) {
+  if (!["customer", "barista"].includes(req.user.role)) {
+    return res.status(403).json({ error: "Customer or Barista access required" });
+  }
+  return next();
+}
+
 function serviceProxy(target, pathRewrite) {
   return createProxyMiddleware({
     target,
@@ -84,6 +104,7 @@ function serviceProxy(target, pathRewrite) {
         }
         if (req.user) {
           proxyReq.setHeader("x-user-id", req.user.userId);
+          proxyReq.setHeader("x-user-name", req.user.name.trim());
           proxyReq.setHeader("x-user-email", req.user.email);
           proxyReq.setHeader("x-user-role", req.user.role);
         }
@@ -122,6 +143,8 @@ const adminRoutes = express.Router();
 const registrationProxy = serviceProxy(REGISTRATION_SERVICE_URL);
 const menuProxy = serviceProxy(MENU_SERVICE_URL);
 const inventoryProxy = serviceProxy(INVENTORY_SERVICE_URL);
+const orderProxy = serviceProxy(ORDER_SERVICE_URL);
+const paymentProxy = serviceProxy(PAYMENT_SERVICE_URL);
 
 adminRoutes.use(authenticateToken, requireAdmin);
 adminRoutes.route("/users").get(registrationProxy).post(registrationProxy);
@@ -155,6 +178,46 @@ app.post("/inventory", authenticateToken, requireAdmin, inventoryProxy);
 app.put("/inventory/:id", authenticateToken, requireAdmin, inventoryProxy);
 app.delete("/inventory/:id", authenticateToken, requireAdmin, inventoryProxy);
 
+//NOTE: Order service mounting
+// Admin and customer can create orders.
+app.post(
+  "/orders",
+  authenticateToken,
+  requireAdminOrCustomer,
+  orderProxy,
+);
+
+// Admin and barista see all orders; customers see only their own orders.
+// The Order service performs the customer ownership filtering.
+app.get("/orders", authenticateToken, orderProxy);
+app.get("/orders/:id", authenticateToken, orderProxy);
+
+// Only admin and barista can move an order through its status flow.
+app.put(
+  "/orders/:id/status",
+  authenticateToken,
+  requireAdminOrBarista,
+  orderProxy,
+);
+
+// Do not mount /orders/:id/payment-status. It is private to Payment.
+
+//NOTE: Payment service mounting
+// Customers pay their own orders; baristas can record counter payments.
+app.post(
+  "/payments",
+  authenticateToken,
+  requireCustomerOrBarista,
+  paymentProxy,
+);
+
+// Admin and barista can read any payment; customers can read only their own.
+app.get("/payments/:orderId", authenticateToken, paymentProxy);
+
+// Only admin can list payment history.
+app.get("/payments", authenticateToken, requireAdmin, paymentProxy);
+
+// The catch-all 404 handler must remain after every public route.
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));
 
 if (require.main === module) {

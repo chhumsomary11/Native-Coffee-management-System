@@ -21,6 +21,7 @@ function internalHeaders(identity = {}) {
   };
 
   if (identity.userId) headers["x-user-id"] = identity.userId;
+  if (identity.name) headers["x-user-name"] = identity.name;
   if (identity.email) headers["x-user-email"] = identity.email;
   if (identity.role) headers["x-user-role"] = identity.role;
   return headers;

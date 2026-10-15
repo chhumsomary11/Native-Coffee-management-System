@@ -1,0 +1,19 @@
+{
+  "name": "payment",
+  "version": "1.0.0",
+  "description": "Coffee Management payment microservice",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "check": "node --check index.js && node --check paymentModel.js && node --check serviceClient.js && node --check dbconnect.js"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
+    "mongoose": "^9.10.4"
+  }
+}

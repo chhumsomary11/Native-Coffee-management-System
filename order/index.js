@@ -31,11 +31,14 @@ app.use((req, res, next) => {
 function allowRoles(allowedRoles) {
   return (req, res, next) => {
     const userId = req.get("x-user-id");
+    const name = req.get("x-user-name");
     const role = req.get("x-user-role");
     const email = req.get("x-user-email");
 
     if (
       !mongoose.isObjectIdOrHexString(userId) ||
+      typeof name !== "string" ||
+      !name.trim() ||
       !role ||
       !ORDER_ROLES.has(role)
     ) {
@@ -45,14 +48,16 @@ function allowRoles(allowedRoles) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    req.user = { userId, role, email };
+    req.user = { userId, name: name.trim(), role, email };
     return next();
   };
 }
 
 function requireInternalKey(req, res, next) {
   if (!process.env.INTERNAL_API_KEY) {
-    return res.status(503).json({ error: "Internal API key is not configured" });
+    return res
+      .status(503)
+      .json({ error: "Internal API key is not configured" });
   }
   if (req.get("x-internal-key") !== process.env.INTERNAL_API_KEY) {
     return res.status(401).json({ error: "Invalid internal API key" });
@@ -82,7 +87,9 @@ function normalizeRequestedItems(items) {
       throw error;
     }
     if (!Number.isInteger(item.qty) || item.qty < 1) {
-      const error = new Error("Every order quantity must be a whole number of at least 1");
+      const error = new Error(
+        "Every order quantity must be a whole number of at least 1",
+      );
       error.status = 400;
       throw error;
     }
@@ -149,7 +156,10 @@ function parseDateFilter(value) {
   }
 
   const start = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== value) {
+  if (
+    Number.isNaN(start.getTime()) ||
+    start.toISOString().slice(0, 10) !== value
+  ) {
     const error = new Error("Date is invalid");
     error.status = 400;
     throw error;
@@ -163,6 +173,7 @@ function toPublicOrder(order) {
   return {
     id: order._id.toString(),
     customerId: order.customerId.toString(),
+    customerName: order.customerName || null,
     items: order.items.map((item) => ({
       drinkId: item.drinkId.toString(),
       name: item.name,
@@ -200,6 +211,7 @@ app.post("/orders", allowOrderCreation, async (req, res, next) => {
     try {
       const order = await Order.create({
         customerId: req.user.userId,
+        customerName: req.user.name,
         items: details.items,
         total: details.total,
       });
@@ -209,7 +221,10 @@ app.post("/orders", allowOrderCreation, async (req, res, next) => {
         try {
           await restoreInventory(inventoryItems);
         } catch (restoreError) {
-          console.error("CRITICAL: Inventory restoration failed:", restoreError.message);
+          console.error(
+            "CRITICAL: Inventory restoration failed:",
+            restoreError.message,
+          );
         }
       }
       throw saveError;
@@ -225,7 +240,11 @@ app.get("/orders", allowOrderReading, async (req, res, next) => {
     if (req.user.role === "customer") filter.customerId = req.user.userId;
 
     if (req.query.status !== undefined) {
-      if (!["pending", "preparing", "ready", "completed"].includes(req.query.status)) {
+      if (
+        !["pending", "preparing", "ready", "completed"].includes(
+          req.query.status,
+        )
+      ) {
         return res.status(400).json({ error: "Invalid order status filter" });
       }
       filter.status = req.query.status;
@@ -281,7 +300,9 @@ app.put(
         });
       }
       if (status === "completed" && order.paymentStatus !== "paid") {
-        return res.status(409).json({ error: "Order must be paid before completion" });
+        return res
+          .status(409)
+          .json({ error: "Order must be paid before completion" });
       }
 
       order.status = status;
@@ -349,7 +370,8 @@ async function start() {
     "INSTANCE_ID",
   ];
   for (const name of required) {
-    if (!process.env[name]) throw new Error(`${name} is missing from the .env file`);
+    if (!process.env[name])
+      throw new Error(`${name} is missing from the .env file`);
   }
 
   await connectDB();

@@ -171,13 +171,14 @@ app.delete(
       if (!item) {
         return res.status(404).json({ error: "Stock item not found" });
       }
-      return res.status(204).send();
+      return res.status(200).json({ message: "Item has been deleted" });
     } catch (error) {
       return next(error);
     }
   },
 );
 
+//Note: Internal use API
 app.post("/inventory/consume", requireInternalKey, async (req, res, next) => {
   let session;
   try {

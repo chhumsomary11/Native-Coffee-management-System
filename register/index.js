@@ -2,12 +2,15 @@ require("dotenv").config();
 
 const bcrypt = require("bcryptjs");
 const express = require("express");
+const mongoose = require("mongoose");
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
 const ADMIN_CREATED_ROLES = new Set(["admin", "barista"]);
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
 
 const { connectDB } = require("./dbconnect.js");
 const User = require("./userModel.js");
+const staffClient = require("./serviceClient.js");
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "20kb" }));
@@ -35,6 +38,18 @@ function toPublicUser(user) {
     email: user.email,
     role: user.role,
   };
+}
+
+function requireInternalKey(req, res, next) {
+  if (!INTERNAL_API_KEY) {
+    return res
+      .status(500)
+      .json({ error: "Internal API key is not configured" });
+  }
+  if (req.get("x-internal-key") !== INTERNAL_API_KEY) {
+    return res.status(401).json({ error: "Invalid internal API key" });
+  }
+  return next();
 }
 
 async function createUser({ name, email, password, role }) {
@@ -66,6 +81,21 @@ async function createUser({ name, email, password, role }) {
 
 // 1. Purpose: For health checks of the service
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
+
+// Note: Private service-to-service lookup. This route is intentionally not mounted
+// by the API Gateway.
+app.get("/internal/users/:id", requireInternalKey, async (req, res, next) => {
+  try {
+    if (!mongoose.isObjectIdOrHexString(req.params.id)) {
+      return res.status(400).json({ error: "Invalid user ID" });
+    }
+    const user = await User.findById(req.params.id).select("-passwordHash");
+    if (!user) return res.status(404).json({ error: "User not found" });
+    return res.status(200).json(toPublicUser(user));
+  } catch (error) {
+    return next(error);
+  }
+});
 
 //2. Purpose: for normal user registration, always creates a customer role.   (Public)
 app.post("/register", async (req, res, next) => {
@@ -140,10 +170,24 @@ app.delete("/users/:id", async (req, res, next) => {
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    const user = await User.findByIdAndDelete(req.params.id);
+    if (!mongoose.isObjectIdOrHexString(req.params.id)) {
+      return res.status(400).json({ error: "Invalid user ID" });
+    }
+    const user = await User.findById(req.params.id).select("-passwordHash");
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
+
+    if (
+      user.role === "barista" &&
+      (await staffClient.hasStaffProfile(user._id))
+    ) {
+      return res.status(409).json({
+        error: "Delete the staff profile before deleting this barista account",
+      });
+    }
+
+    await User.findByIdAndDelete(user._id);
     return res.status(200).json({ message: "User deleted successfully" });
   } catch (error) {
     return next(error);
@@ -171,6 +215,11 @@ app.use((error, req, res, next) => {
 });
 
 async function start() {
+  for (const name of ["INTERNAL_API_KEY", "STAFF_SERVICE_URL"]) {
+    if (!process.env[name]) {
+      throw new Error(`${name} is missing from the .env file`);
+    }
+  }
   await connectDB();
   app.listen(PORT, () =>
     console.log(`Registration service listening on port ${PORT}`),

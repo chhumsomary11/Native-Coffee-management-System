@@ -14,6 +14,7 @@ const {
   INVENTORY_SERVICE_URL,
   ORDER_SERVICE_URL,
   PAYMENT_SERVICE_URL,
+  STAFF_SERVICE_URL,
 } = process.env;
 
 for (const [name, value] of Object.entries({
@@ -24,6 +25,7 @@ for (const [name, value] of Object.entries({
   INVENTORY_SERVICE_URL,
   ORDER_SERVICE_URL,
   PAYMENT_SERVICE_URL,
+  STAFF_SERVICE_URL,
 })) {
   if (!value) throw new Error(`${name} is required in the .env file`);
 }
@@ -75,6 +77,13 @@ function requireAdminOrBarista(req, res, next) {
   return next();
 }
 
+function requireBarista(req, res, next) {
+  if (req.user.role !== "barista") {
+    return res.status(403).json({ error: "Barista access required" });
+  }
+  return next();
+}
+
 function requireAdminOrCustomer(req, res, next) {
   if (!["admin", "customer"].includes(req.user.role)) {
     return res.status(403).json({ error: "Admin or Customer access required" });
@@ -84,7 +93,9 @@ function requireAdminOrCustomer(req, res, next) {
 
 function requireCustomerOrBarista(req, res, next) {
   if (!["customer", "barista"].includes(req.user.role)) {
-    return res.status(403).json({ error: "Customer or Barista access required" });
+    return res
+      .status(403)
+      .json({ error: "Customer or Barista access required" });
   }
   return next();
 }
@@ -145,6 +156,7 @@ const menuProxy = serviceProxy(MENU_SERVICE_URL);
 const inventoryProxy = serviceProxy(INVENTORY_SERVICE_URL);
 const orderProxy = serviceProxy(ORDER_SERVICE_URL);
 const paymentProxy = serviceProxy(PAYMENT_SERVICE_URL);
+const staffProxy = serviceProxy(STAFF_SERVICE_URL);
 
 adminRoutes.use(authenticateToken, requireAdmin);
 adminRoutes.route("/users").get(registrationProxy).post(registrationProxy);
@@ -180,12 +192,7 @@ app.delete("/inventory/:id", authenticateToken, requireAdmin, inventoryProxy);
 
 //NOTE: Order service mounting
 // Admin and customer can create orders.
-app.post(
-  "/orders",
-  authenticateToken,
-  requireAdminOrCustomer,
-  orderProxy,
-);
+app.post("/orders", authenticateToken, requireAdminOrCustomer, orderProxy);
 
 // Admin and barista see all orders; customers see only their own orders.
 // The Order service performs the customer ownership filtering.
@@ -216,6 +223,19 @@ app.get("/payments/:orderId", authenticateToken, paymentProxy);
 
 // Only admin can list payment history.
 app.get("/payments", authenticateToken, requireAdmin, paymentProxy);
+
+// NOTE: Staff and Shift service mounting
+// Baristas can read only the profile and shifts resolved from their JWT userId.
+app.get("/staff/me", authenticateToken, requireBarista, staffProxy);
+app.get("/staff/me/shifts", authenticateToken, requireBarista, staffProxy);
+
+// Staff and shift administration remains admin-only.
+app.post("/staff", authenticateToken, requireAdmin, staffProxy);
+app.get("/staff", authenticateToken, requireAdmin, staffProxy);
+app.delete("/staff/:id", authenticateToken, requireAdmin, staffProxy);
+app.post("/shifts", authenticateToken, requireAdmin, staffProxy);
+app.get("/shifts", authenticateToken, requireAdmin, staffProxy);
+app.delete("/shifts/:id", authenticateToken, requireAdmin, staffProxy);
 
 // The catch-all 404 handler must remain after every public route.
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));

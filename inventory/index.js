@@ -194,9 +194,29 @@ app.post("/inventory/consume", requireInternalKey, async (req, res, next) => {
         );
 
         if (!updated) {
+          const stockItem = await StockItem.findById(item.stockItemId).session(
+            session,
+          );
+
+          if (!stockItem) {
+            const error = new Error("Stock item not found");
+            error.status = 404;
+            error.stockItemId = item.stockItemId;
+            throw error;
+          }
+
           const error = new Error("Insufficient stock");
           error.status = 409;
-          error.stockItemId = item.stockItemId;
+          error.code = "INSUFFICIENT_STOCK";
+          error.stockItem = {
+            id: stockItem._id.toString(),
+            name: stockItem.name,
+            unit: stockItem.unit,
+            requestedQuantity: item.qty,
+            availableQuantity: stockItem.quantity,
+            shortageQuantity: Math.max(0, item.qty - stockItem.quantity),
+          };
+
           throw error;
         }
       }
@@ -264,6 +284,8 @@ app.use((error, req, res, next) => {
   if (status >= 500) console.error(error);
   return res.status(status).json({
     error: status >= 500 ? "Internal server error" : error.message,
+    ...(error.code ? { code: error.code } : {}),
+    ...(error.stockItem ? { stockItem: error.stockItem } : {}),
     ...(error.stockItemId ? { stockItemId: error.stockItemId } : {}),
   });
 });
@@ -277,7 +299,6 @@ async function start() {
   // Ensure required indexes exist before accepting requests.
   await StockItem.createIndexes();
 
-  ``;
   return app.listen(PORT, () =>
     console.log(`Inventory service listening on port ${PORT}`),
   );

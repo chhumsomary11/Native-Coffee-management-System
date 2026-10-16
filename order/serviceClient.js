@@ -55,9 +55,15 @@ async function requestJson(url, options = {}) {
   if (!response.ok) {
     const safeStatuses = new Set([400, 403, 404, 409]);
     throw new ServiceRequestError(
-      typeof body.error === "string" ? body.error : "Dependent service request failed",
+      typeof body.error === "string"
+        ? body.error
+        : "Dependent service request failed",
       safeStatuses.has(response.status) ? response.status : 502,
-      body.stockItemId ? { stockItemId: body.stockItemId } : {},
+      {
+        ...(body.code ? { code: body.code } : {}),
+        ...(body.stockItem ? { stockItem: body.stockItem } : {}),
+        ...(body.stockItemId ? { stockItemId: body.stockItemId } : {}),
+      },
     );
   }
 

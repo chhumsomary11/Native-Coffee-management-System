@@ -15,6 +15,7 @@ const {
   ORDER_SERVICE_URL,
   PAYMENT_SERVICE_URL,
   STAFF_SERVICE_URL,
+  REPORT_SERVICE_URL,
 } = process.env;
 
 for (const [name, value] of Object.entries({
@@ -26,6 +27,7 @@ for (const [name, value] of Object.entries({
   ORDER_SERVICE_URL,
   PAYMENT_SERVICE_URL,
   STAFF_SERVICE_URL,
+  REPORT_SERVICE_URL,
 })) {
   if (!value) throw new Error(`${name} is required in the .env file`);
 }
@@ -157,6 +159,7 @@ const inventoryProxy = serviceProxy(INVENTORY_SERVICE_URL);
 const orderProxy = serviceProxy(ORDER_SERVICE_URL);
 const paymentProxy = serviceProxy(PAYMENT_SERVICE_URL);
 const staffProxy = serviceProxy(STAFF_SERVICE_URL);
+const reportProxy = serviceProxy(REPORT_SERVICE_URL);
 
 adminRoutes.use(authenticateToken, requireAdmin);
 adminRoutes.route("/users").get(registrationProxy).post(registrationProxy);
@@ -236,6 +239,10 @@ app.delete("/staff/:id", authenticateToken, requireAdmin, staffProxy);
 app.post("/shifts", authenticateToken, requireAdmin, staffProxy);
 app.get("/shifts", authenticateToken, requireAdmin, staffProxy);
 app.delete("/shifts/:id", authenticateToken, requireAdmin, staffProxy);
+
+// NOTE: Sales Report service mounting
+app.get("/reports/daily", authenticateToken, requireAdmin, reportProxy);
+app.get("/reports/top-drinks", authenticateToken, requireAdmin, reportProxy);
 
 // The catch-all 404 handler must remain after every public route.
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));

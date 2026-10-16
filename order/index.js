@@ -358,6 +358,8 @@ app.use((error, req, res, next) => {
   if (status >= 500) console.error(error);
   return res.status(status).json({
     error: status >= 500 ? "Internal server error" : error.message,
+    ...(error.code ? { code: error.code } : {}),
+    ...(error.stockItem ? { stockItem: error.stockItem } : {}),
     ...(error.stockItemId ? { stockItemId: error.stockItemId } : {}),
   });
 });

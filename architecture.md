@@ -1,332 +1,183 @@
-# Coffee Management Application Architecture
+# Coffee Management Platform Architecture
 
-## 1. Purpose and current scope
+## 1. Overview
 
-This repository currently implements the identity and user-management part of a Coffee Management application. It uses three independent Node.js processes:
+A backend-only coffee shop management platform made of **9 independent Node.js/Express microservices**. A shop can manage its menu, stock, orders, payments, staff shifts, and sales reports. Access is role-based, enforced at the API Gateway with JWTs. Everything is tested through Postman (`CoffeeManagement_All_Microservices.postman_collection.json`). Docker and load-balancer work (Phase 10) has **not been started**; there are no Dockerfiles yet.
 
-1. **API Gateway** — the public entry point. It routes requests, verifies JSON Web Tokens (JWTs), and enforces administrator access.
-2. **Registration Service** — creates customer, administrator, and barista accounts and owns user-management operations.
-3. **Login Service** — verifies credentials and issues JWTs.
+### Roles
 
-The Registration and Login services use the same MongoDB Atlas database and the same `users` collection. There are not yet separate menu, order, inventory, payment, or reporting services in this repository.
+| Role | Can do |
+| --- | --- |
+| `admin` | Full control: menu, inventory, staff and shifts, payment history, reports, creating staff accounts, creating orders |
+| `barista` | Views menu and stock, updates order status, records counter payments, reads own staff profile and shifts |
+| `customer` | Browses the menu, places and views their own orders, pays for their own orders |
 
-## 2. High-level architecture
+## 2. System map
 
 ```mermaid
 flowchart LR
-    C[Client / Postman / Frontend]
+    C[Client / Postman]
+    G[API Gateway :3000/4000<br/>JWT + RBAC + proxy]
 
-    subgraph Public_Entry[Public entry point]
-        G[API Gateway<br/>Express + http-proxy-middleware<br/>default port 3000]
+    subgraph Services[Private services]
+        REG[Register :3001]
+        LOG[Login :3002]
+        MEN[Menu :3003]
+        INV[Inventory :3004]
+        ORD[Order :3005]
+        PAY[Payment :3006]
+        STF[Staff :3007]
+        REP[Report :3008]
     end
 
-    subgraph Private_Services[Private application network]
-        R[Registration Service<br/>Express + bcryptjs + Mongoose<br/>default port 3001]
-        L[Login Service<br/>Express + bcryptjs + jsonwebtoken<br/>default port 3002]
-    end
+    C --> G
+    G --> REG & LOG & MEN & INV & ORD & PAY & STF & REP
 
-    DB[(MongoDB Atlas<br/>Coffee database<br/>users collection)]
-
-    C -->|HTTP requests| G
-    G -->|POST /register| R
-    G -->|POST /auth/login rewritten to /login| L
-    G -->|Authenticated /admin/users requests<br/>rewritten to /users| R
-    R -->|create, read, delete| DB
-    L -->|read user and passwordHash| DB
-    L -.->|JWT returned through Gateway| C
+    ORD -->|get drink + recipe| MEN
+    ORD -->|consume / restore| INV
+    PAY -->|read order, set payment-status| ORD
+    REP -->|read orders| ORD
+    STF -->|validate user| REG
+    REG -->|has staff profile?| STF
 ```
 
-In local development, the Postman collection expects the Gateway at `http://localhost:4000`, Registration at `http://localhost:3001`, and Login at `http://localhost:3002`. The Gateway source has a default port of `3000`, so its `.env` must set `PORT=4000` to match the collection.
+Solid arrows from the Gateway are public routes. Arrows between services are **internal HTTP calls** authenticated with `x-internal-key`; the Gateway never exposes them.
 
-## 3. Component responsibilities
+## 3. Services
 
-### 3.1 Client
-
-The client can be Postman, a browser frontend, a mobile application, or another approved consumer. It should call the API Gateway for application operations.
-
-The client is responsible for:
-
-- sending JSON request bodies with `Content-Type: application/json`;
-- storing the JWT returned after login;
-- sending protected requests with `Authorization: Bearer <token>`;
-- never treating a client-supplied role or identity header as proof of identity.
-
-The supplied Postman collection calls service health endpoints directly for diagnostics. That is useful during local development, but normal application traffic should enter through the Gateway.
-
-### 3.2 API Gateway (`api-gateway/gateway.js`)
-
-The Gateway is the boundary between public clients and internal services. It does not connect to MongoDB and does not create users itself. Its responsibilities are:
-
-- expose the public API;
-- forward registration and login requests to the correct service;
-- validate bearer tokens for protected routes;
-- require the `admin` role for all `/admin` routes;
-- remove any client-supplied `x-user-*` or `x-auth-*` headers;
-- add trusted identity headers after verifying the JWT;
-- translate a downstream connection failure into `502 Microservice is unavailable`;
-- return `404 Route not found` for any route not explicitly exposed.
-
-The Gateway requires these environment variables:
-
-| Variable | Purpose |
-| --- | --- |
-| `PORT` | Public Gateway port; defaults to `3000` |
-| `JWT_SECRETE` | Shared secret used to verify HS256 JWTs |
-| `REGISTRATION_SERVICE_URL` | Base URL of the Registration service |
-| `LOGIN_SERVICE_URL` | Base URL of the Login service |
-
-The project intentionally uses the name `JWT_SECRETE`. The Login service and Gateway must use exactly the same variable name and secret value.
-
-### 3.3 Registration Service (`register/index.js`)
-
-The Registration service owns all writes to user accounts. It:
-
-- validates names, email addresses, and passwords;
-- normalizes email addresses by trimming them and converting them to lowercase;
-- hashes passwords with bcrypt using 12 salt rounds;
-- creates public registrations only as `customer`;
-- lets an authenticated administrator create `admin` or `barista` accounts;
-- lists users, retrieves a user by ID, and deletes a user;
-- never returns `passwordHash` in API responses;
-- handles duplicate emails with HTTP `409`.
-
-Its default port is `3001`. It requires `db_password` to construct the MongoDB Atlas connection string. The one-time seed script additionally requires `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD`.
-
-### 3.4 Login Service (`login/index.js`)
-
-The Login service authenticates existing accounts. It does not create or modify users. It:
-
-- validates that an email and password were supplied;
-- normalizes the email address;
-- loads the user from the shared `users` collection;
-- explicitly selects `passwordHash`, which is hidden by default in the schema;
-- compares the submitted password with the bcrypt hash;
-- reads the user's role from MongoDB, never from the request body;
-- signs and returns a JWT after successful authentication.
-
-Its default port is `3002`. It requires `db_password` and `JWT_SECRETE`; `JWT_EXPIRES_IN` is optional and defaults to `1h`.
-
-`login/authentication.js` is an older alternate implementation and is not started by `npm start`. The active entry point is `login/index.js` as declared in `login/package.json`.
-
-### 3.5 MongoDB Atlas
-
-Both data services connect to:
-
-- database: `Coffee`;
-- collection: `users`;
-- model: `User`.
-
-The shared document structure is:
-
-| Field | Rules |
-| --- | --- |
-| `_id` | MongoDB ObjectId generated by MongoDB |
-| `name` | Required trimmed string |
-| `email` | Required, unique, lowercase, and trimmed |
-| `passwordHash` | Required bcrypt hash; excluded from normal queries with `select: false` |
-| `role` | Required enum: `admin`, `barista`, or `customer`; default `customer` |
-| `phone` | Optional trimmed string |
-| `createdAt`, `updatedAt` | Automatically managed by Mongoose timestamps |
-
-The duplicated `userModel.js` files in Registration and Login must remain structurally compatible because they represent the same MongoDB collection.
-
-## 4. Public route map
-
-| Client request to Gateway | Authentication | Downstream request | Owner |
+| Service | Port | Database | Responsibility |
 | --- | --- | --- | --- |
-| `GET /` | None | None | Gateway |
-| `GET /health` | None | None | Gateway |
-| `POST /register` | None | `POST /register` | Registration |
-| `POST /auth/login` | None | `POST /login` | Login |
-| `GET /admin/users` | Valid admin JWT | `GET /users` | Registration |
-| `POST /admin/users` | Valid admin JWT | `POST /users` | Registration |
-| `GET /admin/users/:id` | Valid admin JWT | `GET /users/:id` | Registration |
-| `DELETE /admin/users/:id` | Valid admin JWT | `DELETE /users/:id` | Registration |
+| `api-gateway` | 3000 (`.env.example` sets 4000) | none | Only public entry point. Verifies JWT, enforces roles, proxies |
+| `register` | 3001 | `users` (Atlas, `Coffee`) | Owns user accounts. Public registration (always `customer`), admin-created `admin`/`barista`, list/get/delete users. `seed-admin.js` creates the first admin |
+| `login` | 3002 | `users` (shared with register) | Checks email/password with bcrypt, signs the JWT. Runs from `authentication.js` |
+| `menu` | 3003 | own DB | Drinks, prices, availability and **recipes** (`[{stockItemId, qty}]`). Owns drinks |
+| `inventory` | 3004 | own DB | Stock items and quantities. Owns stock. Internal `consume`/`restore` |
+| `order` | 3005 | `order_db` | Creates orders, status flow, ownership filtering. Can run as several instances |
+| `payment` | 3006 | own DB | Payments, duplicate protection, tells Order an order is paid |
+| `staff` | 3007 | own DB | Barista employment profile (by `userId`) and shifts |
+| `report` | 3008 | **none** | Daily and top-drinks reports computed from Order's data |
 
-The `/admin` prefix is removed when the Gateway router forwards the request. For example, the client-facing `/admin/users/123` becomes `/users/123` inside the Registration service.
+Each service is its own package (`package.json`, `node_modules`, `.env`). There is no root package. Run with `cd <service> && npm start`; `register`, `report`, and `staff` also have `npm test` (`node --test test.js`).
 
-Registration and Login also implement their own `GET /health` endpoints. These are internal health checks and are not proxied by the Gateway.
+**Data ownership rules:** a service only writes its own database. Menu never uses Mongoose population across databases; it stores `stockItemId` as a plain ObjectId. Report never connects to the order database; it asks Order over HTTP. Staff stores only the barista's `userId`, while Register owns the account.
 
-## 5. End-to-end request flows
+## 4. Gateway route map and roles
 
-### 5.1 Customer registration
+The Gateway has an **explicit allowlist**; anything else returns `404 Route not found`. A new service endpoint is unreachable until a route is added in `api-gateway/gateway.js`, before the catch-all.
 
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant G as API Gateway
-    participant R as Registration Service
-    participant D as MongoDB users
-
-    C->>G: POST /register<br/>{name, email, password, role?}
-    G->>R: POST /register (body streamed unchanged)
-    R->>R: Normalize and validate input
-    R->>D: Check whether email exists
-    alt email already exists
-        D-->>R: Existing user found
-        R-->>G: 409 Email already exists
-        G-->>C: 409 response
-    else email is available
-        R->>R: Hash password with bcrypt, cost 12
-        R->>D: Insert user with role=customer
-        D-->>R: Created document
-        R-->>G: 201 public user (no passwordHash)
-        G-->>C: 201 public user
-    end
-```
-
-Important security behavior: even if the request contains `"role": "admin"`, the Registration service overrides it with `customer`. Public registration therefore cannot be used to self-assign an elevated role.
-
-### 5.2 Login and JWT creation
-
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant G as API Gateway
-    participant L as Login Service
-    participant D as MongoDB users
-
-    C->>G: POST /auth/login<br/>{email, password}
-    G->>L: POST /login
-    L->>L: Validate and normalize email
-    L->>D: Find user and explicitly select passwordHash
-    D-->>L: User document or no result
-    L->>L: bcrypt.compare(password, passwordHash)
-    alt user missing or password incorrect
-        L-->>G: 401 Invalid email or password
-        G-->>C: 401 response
-    else credentials valid
-        L->>L: Sign {userId, email, role}<br/>with JWT_SECRETE
-        L-->>G: 200 token + public user
-        G-->>C: 200 token + public user
-    end
-```
-
-The token contains `userId`, `email`, and `role`. Its lifetime comes from `JWT_EXPIRES_IN`, with a default of one hour. The Login service signs the token and the Gateway verifies it, so both processes must share the same `JWT_SECRETE` value.
-
-### 5.3 Protected administrator request
-
-```mermaid
-sequenceDiagram
-    participant C as Admin client
-    participant G as API Gateway
-    participant R as Registration Service
-    participant D as MongoDB users
-
-    C->>G: GET /admin/users<br/>Authorization: Bearer JWT
-    G->>G: Parse bearer token
-    G->>G: Verify HS256 signature and expiry
-    G->>G: Validate userId, email, and role claims
-    alt token missing, invalid, or expired
-        G-->>C: 401
-    else valid token but role is not admin
-        G-->>C: 403 Admin access required
-    else valid admin token
-        G->>G: Remove client x-user-* and x-auth-* headers
-        G->>R: GET /users<br/>x-user-id/email/role from verified JWT
-        R->>R: Require x-user-role=admin
-        R->>D: Query users without passwordHash
-        D-->>R: User documents
-        R-->>G: 200 public user array
-        G-->>C: 200 public user array
-    end
-```
-
-The same authorization sequence protects administrator create, get-by-ID, and delete operations.
-
-### 5.4 Initial administrator creation
-
-There is a bootstrap problem: an administrator is required to create elevated users, but a public user cannot register as an administrator. `register/seed-admin.js` solves this once during setup:
-
-1. Read `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` from the Registration service environment.
-2. Connect directly to MongoDB.
-3. Normalize the email and check whether it already exists.
-4. Hash the password with bcrypt.
-5. Insert the first user with `role: "admin"`.
-6. Disconnect from MongoDB.
-
-Run it from `register` with `npm run seed:admin`. It is a one-time command, not another long-running microservice. If the email already exists, it safely skips creation.
-
-## 6. Authentication, authorization, and trust boundaries
-
-Authentication answers **who is making the request**. Authorization answers **what that authenticated user may do**.
-
-- The Login service authenticates email/password and creates a signed JWT.
-- The Gateway authenticates later requests by verifying that JWT.
-- The Gateway authorizes `/admin` routes by requiring `role === "admin"`.
-- The Registration service performs a second admin check using the trusted `x-user-role` header inserted by the Gateway.
-
-The internal identity headers are:
-
-- `x-user-id`;
-- `x-user-email`;
-- `x-user-role`.
-
-Before proxying, the Gateway deletes any `x-user-*` and `x-auth-*` headers supplied by the client. It then reconstructs the identity headers from verified token claims. This prevents a client from simply sending `x-user-role: admin` through the Gateway.
-
-However, the Registration service itself only checks the header; it does not verify the JWT. Therefore, the Registration service must not be publicly reachable in production. Network rules should allow user-management traffic to reach it only from the Gateway. If a client can call port `3001` directly, it can forge `x-user-role: admin` and bypass Gateway authorization.
-
-## 7. Error propagation
-
-Errors are returned through the same service chain that handled the request:
-
-- `400 Bad Request` — invalid input, malformed JSON in Registration, or an unsupported admin-created role;
-- `401 Unauthorized` — invalid login credentials, missing bearer token, invalid token claims/signature, or expired token;
-- `403 Forbidden` — authenticated non-admin accessing an admin route, or missing trusted admin header at Registration;
-- `404 Not Found` — unknown Gateway/service route or user ID not found;
-- `409 Conflict` — duplicate email;
-- `500 Internal Server Error` — unexpected service/database failure;
-- `502 Bad Gateway` — Gateway cannot connect to a downstream microservice.
-
-For proxy failures, the Gateway hides internal connection details from the client and logs the lower-level error code on the server.
-
-## 8. Process startup and dependencies
-
-Each folder is an independent Node.js package and should install and run its own dependencies.
-
-| Process | Start command | Startup behavior |
+| Route | Roles | Service |
 | --- | --- | --- |
-| Registration | `cd register && npm start` | Loads environment, connects/pings MongoDB, then starts HTTP listener |
-| Login | `cd login && npm start` | Checks JWT secret, connects/pings MongoDB, then starts HTTP listener |
-| Gateway | `cd api-gateway && npm start` | Validates required environment variables, then starts HTTP listener |
+| `GET /`, `GET /health` | public | Gateway |
+| `POST /register` | public | Register |
+| `POST /auth/login` | public (rewritten to `/login`) | Login |
+| `/admin/users`, `/admin/users/:id` (GET, POST, DELETE) | admin (`/admin` prefix is stripped) | Register |
+| `GET /menu`, `GET /menu/:id` | any authenticated | Menu |
+| `POST /menu`, `PUT /menu/:id`, `DELETE /menu/:id` | admin | Menu |
+| `GET /inventory`, `GET /inventory/low` | admin, barista | Inventory |
+| `POST /inventory`, `PUT/DELETE /inventory/:id` | admin | Inventory |
+| `POST /orders` | admin, customer | Order |
+| `GET /orders`, `GET /orders/:id` | any authenticated (Order filters customers to their own) | Order |
+| `PUT /orders/:id/status` | admin, barista | Order |
+| `POST /payments` | customer, barista | Payment |
+| `GET /payments/:orderId` | any authenticated (customers: own only) | Payment |
+| `GET /payments` | admin | Payment |
+| `GET /staff/me`, `GET /staff/me/shifts` | barista | Staff |
+| `POST/GET /staff`, `DELETE /staff/:id`, `POST/GET /shifts`, `DELETE /shifts/:id` | admin | Staff |
+| `GET /reports/daily`, `GET /reports/top-drinks` | admin | Report |
 
-A practical local startup order is MongoDB availability first, then Registration and Login, and finally the Gateway. The Gateway can technically start before the services, but requests to an unavailable service will return `502`.
+**Deliberately not mounted** (internal only): `/inventory/consume`, `/inventory/restore`, `/orders/:id/payment-status`, `/internal/*`.
 
-The data services deliberately connect to MongoDB before opening their HTTP ports. This avoids reporting the process as available while its required database is unavailable.
+## 5. Authentication and trust boundaries
 
-## 9. Configuration relationships
+1. **Login** verifies credentials and signs an HS256 JWT containing `userId`, `name`, `email`, `role`. The role comes from the database, never from the request. Lifetime is `JWT_EXPIRES_IN` (default `1h`).
+2. **Gateway** verifies signature, expiry, and claim shapes, then checks the role for the route.
+3. Before proxying, the Gateway **deletes any client-supplied `x-user-*` / `x-auth-*` headers** and sets `x-user-id`, `x-user-name`, `x-user-email`, `x-user-role` from the verified token.
+4. **Downstream services trust these headers** and do their own role checks. They do not verify JWTs.
+5. **Service-to-service calls** carry `x-internal-key` (`INTERNAL_API_KEY`, identical in every service that uses it) plus forwarded identity headers.
+
+Because downstream services trust headers, **they must not be reachable by clients directly**. If a client could call port 3005, it could forge `x-user-role: admin`. In deployment, only the Gateway may reach the service ports.
+
+`JWT_SECRETE` is intentionally spelled that way and must be identical in the Gateway and Login.
+
+## 6. Key flows
+
+### 6.1 Order creation (Order → Menu → Inventory)
+
+```text
+Customer/admin POST /orders  (via Gateway)
+  → for each item: GET Menu /menu/:id         reject missing/unavailable drinks
+  → use Menu prices (client prices are ignored)
+  → combine recipe quantities across items
+  → POST Inventory /inventory/consume          fails 409 if stock is short
+  → save order in order_db                     (paymentStatus unpaid, status pending)
+  → if saving fails: POST Inventory /inventory/restore   (compensation)
+```
+
+Status can only move `pending → preparing → ready → completed`, and a completed order must already be paid. Only Payment can change `paymentStatus`. Every Order response carries `X-Served-By: <INSTANCE_ID>` (default `order-A`), so the same code can run twice with different `PORT` and `INSTANCE_ID` for load balancing.
+
+### 6.2 Payment (Payment → Order)
+
+```text
+POST /payments (customer for own order, or barista at counter)
+  → GET Order /orders/:id                      order exists and is unpaid
+  → verify customer ownership and exact amount (wrong amount: 400, duplicate: 409)
+  → create payment
+  → PUT Order /orders/:id/payment-status        internal route, failure-safe
+```
+
+Admins cannot create payments.
+
+### 6.3 Reports
+
+Report has no database. It calls Order internally, counts only paid orders, validates `YYYY-MM-DD` filters, and computes order count, total revenue, average order value, and quantity and revenue per drink.
+
+### 6.4 Staff and users
+
+An admin creates a barista account through `POST /admin/users` (Register), then creates the staff profile through `POST /staff` (one profile per barista `userId`). Staff checks the user with Register's internal `/internal/users/:id`. Register refuses to delete a barista who still has a staff profile, asking Staff over `/internal/staff/by-user/:id`. Shifts validate dates and `HH:mm` times, require `startTime < endTime`, and reject overlaps; they can be filtered by `date` and `staffId`.
+
+### 6.5 Bootstrapping the first admin
+
+Public registration always yields `customer`. Run `npm run seed:admin` in `register` (needs `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`) to insert the first admin directly in MongoDB. It skips if the email exists.
+
+## 7. Configuration
+
+Each service reads its own `.env` (git-ignored; most have a `.env.example`).
 
 ```text
 Gateway.JWT_SECRETE = Login.JWT_SECRETE
-Gateway.REGISTRATION_SERVICE_URL -> Registration host and port
-Gateway.LOGIN_SERVICE_URL        -> Login host and port
-Registration.db_password         -> MongoDB Atlas credential
-Login.db_password                -> MongoDB Atlas credential
-Registration database/collection = Login database/collection = Coffee.users
+Gateway.*_SERVICE_URL   -> the 8 service base URLs (all required at startup)
+INTERNAL_API_KEY        -> same value in inventory, order, payment, register, report, staff
+Order.MENU_SERVICE_URL, INVENTORY_SERVICE_URL
+Payment.ORDER_SERVICE_URL          Report.ORDER_SERVICE_URL
+Staff.REGISTRATION_SERVICE_URL     Register.STAFF_SERVICE_URL
+Order.INSTANCE_ID       -> value of X-Served-By
+SERVICE_REQUEST_TIMEOUT_MS (default 5000) for internal HTTP calls
 ```
 
-Changing one side without its matching configuration causes predictable failures:
+Data services use `URI` (MongoDB connection string); Register and Login build the Atlas connection from `db_password` instead. Services connect to MongoDB before they open their HTTP port. Mismatched secrets cause `401 Invalid token` everywhere, wrong URLs cause `502 Microservice is unavailable`, and a wrong `INTERNAL_API_KEY` causes `401` on internal calls.
 
-- different JWT secrets cause every protected request to return `401 Invalid token`;
-- an incorrect service URL causes the Gateway to return `502`;
-- different database targets can allow registration to succeed but make the new account invisible to Login;
-- incompatible user schemas can prevent password verification or role loading.
+## 8. Error conventions
 
-## 10. Architectural constraints and future extension
+`400` invalid input · `401` bad credentials, missing/invalid/expired token, or bad internal key · `403` wrong role · `404` unknown route or resource · `409` conflict (duplicate email, duplicate payment, insufficient stock) · `502` a downstream service is unreachable or returned something unusable. Internal `serviceClient.js` helpers pass through only 400/403/404/409 from dependencies and map everything else to 502.
 
-When adding a new microservice, preserve the current boundary:
+## 9. Project status
 
-1. Give the service one clear business responsibility and its own process/port.
-2. Add an internal service URL to the Gateway configuration.
-3. Expose only required client routes at the Gateway.
-4. Verify JWTs and roles at the Gateway before proxying protected traffic.
-5. Strip untrusted identity headers and forward identity derived from the verified token.
-6. Keep the new service private so clients cannot bypass Gateway controls.
-7. Decide explicit data ownership instead of allowing every service to modify every collection.
-8. Add health checks and end-to-end tests for both successful and rejected flows.
+| Phase | Status |
+| --- | --- |
+| Gateway, Register, Login | Done |
+| Menu (with recipes), Inventory | Done |
+| Order, Payment | Done |
+| Staff/Shift, Report | Done (services and gateway routes present) |
+| Gateway routes for all services | Done |
+| Postman collection | Present; re-run it end to end against all services |
+| **Phase 10: Docker, Nginx, deployment** | **Not started** |
 
-For example, a future Order service could accept a protected `POST /orders` through the Gateway. The Gateway would verify the user, send the trusted user ID to the private Order service, and the Order service would store an order owned by that ID. It should not accept an arbitrary customer ID from the request body as proof of ownership.
+## 10. Planned deployment (Phase 10)
 
-## 11. Current verification boundary
+Target: one container per service, on separate EC2 instances, with Order running twice (`order-A` on 3005, `order-B` on 3015) behind Nginx. Not yet implemented:
 
-This document describes the architecture implemented by the current source files and Postman collection. Static code inspection confirms the route mappings, schema, hashing behavior, JWT claims, authorization middleware, and environment-variable relationships. Actual availability still depends on valid local `.env` values, network access to MongoDB Atlas, and all three processes running. A successful syntax check alone is not proof of a working database-backed end-to-end flow.
+- a Dockerfile per service using `npm ci --omit=dev` (needs `package.json` and `package-lock.json` in sync), plus `.dockerignore`;
+- Docker Compose for local runs, including Order A and B;
+- Nginx upstream configuration for Order, and `ORDER_SERVICE_URL` pointing at it;
+- `.env.example` for every service and deployment notes;
+- network rules so only the Gateway (and Nginx) can reach service ports.

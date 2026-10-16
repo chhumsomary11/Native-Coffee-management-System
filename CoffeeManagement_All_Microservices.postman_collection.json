@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "4ce6f9f1-0d65-42ef-b2c1-1cfe7ce00551",
     "name": "Coffee Management - All Microservices",
-    "description": "Gateway-first tests for the nine-service Coffee Management contract. IMPLEMENTED in this checkout: Gateway, Registration, Login, Menu, Inventory, Order, Payment, Staff/Shift. CONTRACT ONLY (expected to fail until implemented and mounted): Sales Report. Run folders in numeric order. Before running, set adminEmail/adminPassword to the seeded administrator credentials. All application traffic uses gatewayBaseUrl; direct service URLs are used only for health diagnostics.",
+    "description": "Gateway-first tests for the nine-service Coffee Management contract. IMPLEMENTED in this checkout: Gateway, Registration, Login, Menu, Inventory, Order, Payment, Staff/Shift, and Sales Report. Run folders in numeric order. Before running, set adminEmail/adminPassword to the seeded administrator credentials. All application traffic uses gatewayBaseUrl; direct service URLs are used only for health diagnostics.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -50,7 +50,7 @@
         { "name": "Order B Health (Optional Local Instance)", "request": { "method": "GET", "header": [], "url": "{{orderBBaseUrl}}/health", "description": "Second Order instance for load-balancer testing; skip until Order B is running." }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Order B is healthy when running', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
         { "name": "Payment Health", "request": { "method": "GET", "header": [], "url": "{{paymentBaseUrl}}/health" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Payment is healthy', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
         { "name": "Staff Health", "request": { "method": "GET", "header": [], "url": "{{staffBaseUrl}}/health" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Staff is healthy', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] },
-        { "name": "[CONTRACT] Report Health", "request": { "method": "GET", "header": [], "url": "{{reportBaseUrl}}/health", "description": "Not implemented in the current checkout." }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Report is healthy when implemented', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] }
+        { "name": "Report Health", "request": { "method": "GET", "header": [], "url": "{{reportBaseUrl}}/health" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Report is healthy', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }] }
       ]
     },
     {
@@ -163,7 +163,7 @@
       ]
     },
     {
-      "name": "08 - Sales Reports [CONTRACT - NOT IMPLEMENTED]",
+      "name": "08 - Sales Reports",
       "item": [
         { "name": "Admin Gets Daily Report", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{gatewayBaseUrl}}/reports/daily?date={{today}}" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Daily report is returned', () => pm.response.to.have.status(200));", "const body = pm.response.json();", "pm.test('Report has required values', () => { pm.expect(body).to.have.property('orderCount'); pm.expect(body).to.have.property('totalRevenue'); pm.expect(body).to.have.property('averageOrderValue'); });"], "type": "text/javascript" } }] },
         { "name": "Admin Gets Top Drinks", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{gatewayBaseUrl}}/reports/top-drinks?from={{today}}&to={{today}}&limit=5" }, "event": [{ "listen": "test", "script": { "exec": ["pm.test('Top drinks report is returned', () => pm.response.to.have.status(200));", "pm.test('Drinks array is returned', () => pm.expect(pm.response.json().drinks).to.be.an('array'));"], "type": "text/javascript" } }] },

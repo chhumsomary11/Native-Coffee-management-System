@@ -1,0 +1,9 @@
+**/node_modules
+**/.env
+.git
+.gitignore
+.DS_Store
+**/npm-debug.log*
+**/test.js
+CoffeeManagement_All_Microservices.postman_collection.json
+architecture.md

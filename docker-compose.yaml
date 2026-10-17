@@ -1,358 +1,200 @@
 name: coffee-management
 
+# One file for every machine. Which services run is chosen by COMPOSE_PROFILES
+# (edge | ec2-2 | ec2-3 | all) and where they find each other by the *_HOST
+# variables. Every variable has a default that matches single-machine Docker
+# networking, so local use needs no root .env: `docker compose --profile all up -d`.
+# See .env.example for the EC2 values.
+
+x-service: &service
+  init: true
+  restart: on-failure
+  pull_policy: ${PULL_POLICY:-never}
+  networks:
+    - coffee-network
+
+# Every app service listens on $PORT, so one healthcheck fits all of them.
+x-healthcheck: &health
+  test:
+    [
+      "CMD",
+      "node",
+      "-e",
+      "fetch('http://127.0.0.1:'+process.env.PORT+'/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
+    ]
+  interval: 10s
+  timeout: 5s
+  retries: 5
+  start_period: 20s
+
 services:
   register:
-    image: coffee-register:1.0
-    pull_policy: never
+    <<: *service
+    image: ${IMAGE_PREFIX:-}coffee-register:1.0
     container_name: coffee-register
-    init: true
-    restart: on-failure
+    profiles: [edge, all]
     env_file:
       - ./register/.env
     environment:
       PORT: "3001"
-      STAFF_SERVICE_URL: http://staff:3007
+      STAFF_SERVICE_URL: http://${STAFF_HOST:-staff}:3007
     ports:
       - "3001:3001"
-    networks:
-      - coffee-network
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3001/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+    healthcheck: *health
 
   login:
-    image: coffee-login:1.0
-    pull_policy: never
+    <<: *service
+    image: ${IMAGE_PREFIX:-}coffee-login:1.0
     container_name: coffee-login
-    init: true
-    restart: on-failure
+    profiles: [edge, all]
     env_file:
       - ./login/.env
     environment:
       PORT: "3002"
     ports:
       - "3002:3002"
-    networks:
-      - coffee-network
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3002/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+    healthcheck: *health
 
   menu:
-    image: coffee-menu:1.0
-    pull_policy: never
+    <<: *service
+    image: ${IMAGE_PREFIX:-}coffee-menu:1.0
     container_name: coffee-menu
-    init: true
-    restart: on-failure
+    profiles: [ec2-2, all]
     env_file:
       - ./menu/.env
     environment:
       PORT: "3003"
     ports:
       - "3003:3003"
-    networks:
-      - coffee-network
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3003/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+    healthcheck: *health
 
   inventory:
-    image: coffee-inventory:1.0
-    pull_policy: never
+    <<: *service
+    image: ${IMAGE_PREFIX:-}coffee-inventory:1.0
     container_name: coffee-inventory
-    init: true
-    restart: on-failure
+    profiles: [ec2-2, all]
     env_file:
       - ./inventory/.env
     environment:
       PORT: "3004"
     ports:
       - "3004:3004"
-    networks:
-      - coffee-network
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3004/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+    healthcheck: *health
 
   order-a:
-    image: coffee-order:1.0
-    pull_policy: never
+    <<: *service
+    image: ${IMAGE_PREFIX:-}coffee-order:1.0
     container_name: coffee-order-a
-    init: true
-    restart: on-failure
+    profiles: [ec2-2, all]
     env_file:
       - ./order/.env
     environment:
       PORT: "3005"
       INSTANCE_ID: order-A
-      MENU_SERVICE_URL: http://menu:3003
-      INVENTORY_SERVICE_URL: http://inventory:3004
+      MENU_SERVICE_URL: http://${MENU_HOST:-menu}:3003
+      INVENTORY_SERVICE_URL: http://${INVENTORY_HOST:-inventory}:3004
     ports:
       - "3005:3005"
-    networks:
-      - coffee-network
-    depends_on:
-      menu:
-        condition: service_healthy
-      inventory:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3005/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+    healthcheck: *health
 
   order-b:
-    image: coffee-order:1.0
-    pull_policy: never
+    <<: *service
+    image: ${IMAGE_PREFIX:-}coffee-order:1.0
     container_name: coffee-order-b
-    init: true
-    restart: on-failure
+    profiles: [ec2-3, all]
     env_file:
       - ./order/.env
     environment:
       PORT: "3005"
       INSTANCE_ID: order-B
-      MENU_SERVICE_URL: http://menu:3003
-      INVENTORY_SERVICE_URL: http://inventory:3004
+      MENU_SERVICE_URL: http://${MENU_HOST:-menu}:3003
+      INVENTORY_SERVICE_URL: http://${INVENTORY_HOST:-inventory}:3004
     ports:
       - "3015:3005"
-    networks:
-      - coffee-network
-    depends_on:
-      menu:
-        condition: service_healthy
-      inventory:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3005/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+    healthcheck: *health
 
   nginx:
-    image: coffee-nginx:1.0
-    pull_policy: never
+    <<: *service
+    image: ${IMAGE_PREFIX:-}coffee-nginx:1.0
     container_name: coffee-nginx
-    init: true
-    restart: on-failure
+    profiles: [edge, all]
     environment:
-      ORDER_A_HOST: order-a
-      ORDER_A_PORT: "3005"
-      ORDER_B_HOST: order-b
-      ORDER_B_PORT: "3005"
+      ORDER_A_HOST: ${ORDER_A_HOST:-order-a}
+      ORDER_A_PORT: ${ORDER_A_PORT:-3005}
+      ORDER_B_HOST: ${ORDER_B_HOST:-order-b}
+      ORDER_B_PORT: ${ORDER_B_PORT:-3005}
     ports:
       - "80:80"
-    networks:
-      - coffee-network
-    depends_on:
-      order-a:
-        condition: service_healthy
-      order-b:
-        condition: service_healthy
+      - "8081:8081"
     healthcheck:
-      test:
-        ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
 
   payment:
-    image: coffee-payment:1.0
-    pull_policy: never
+    <<: *service
+    image: ${IMAGE_PREFIX:-}coffee-payment:1.0
     container_name: coffee-payment
-    init: true
-    restart: on-failure
+    profiles: [ec2-2, all]
     env_file:
       - ./payment/.env
     environment:
       PORT: "3006"
-      ORDER_SERVICE_URL: http://nginx:8081
+      ORDER_SERVICE_URL: http://${NGINX_HOST:-nginx}:8081
     ports:
       - "3006:3006"
-    networks:
-      - coffee-network
-    depends_on:
-      nginx:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3006/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+    healthcheck: *health
 
   staff:
-    image: coffee-staff:1.0
-    pull_policy: never
+    <<: *service
+    image: ${IMAGE_PREFIX:-}coffee-staff:1.0
     container_name: coffee-staff
-    init: true
-    restart: on-failure
+    profiles: [ec2-3, all]
     env_file:
       - ./staff/.env
     environment:
       PORT: "3007"
-      REGISTRATION_SERVICE_URL: http://register:3001
+      REGISTRATION_SERVICE_URL: http://${REGISTER_HOST:-register}:3001
     ports:
       - "3007:3007"
-    networks:
-      - coffee-network
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3007/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+    healthcheck: *health
 
   report:
-    image: coffee-report:1.0
-    pull_policy: never
+    <<: *service
+    image: ${IMAGE_PREFIX:-}coffee-report:1.0
     container_name: coffee-report
-    init: true
-    restart: on-failure
+    profiles: [ec2-3, all]
     env_file:
       - ./report/.env
     environment:
       PORT: "3008"
-      ORDER_SERVICE_URL: http://nginx:8081
+      ORDER_SERVICE_URL: http://${NGINX_HOST:-nginx}:8081
     ports:
       - "3008:3008"
-    networks:
-      - coffee-network
-    depends_on:
-      nginx:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3008/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+    healthcheck: *health
 
   api-gateway:
-    image: coffee-gateway:1.0
-    pull_policy: never
+    <<: *service
+    image: ${IMAGE_PREFIX:-}coffee-gateway:1.0
     container_name: coffee-api-gateway
-    init: true
-    restart: on-failure
+    profiles: [edge, all]
     env_file:
       - ./api-gateway/.env
     environment:
       PORT: "4000"
-      REGISTRATION_SERVICE_URL: http://register:3001
-      LOGIN_SERVICE_URL: http://login:3002
-      MENU_SERVICE_URL: http://menu:3003
-      INVENTORY_SERVICE_URL: http://inventory:3004
-      ORDER_SERVICE_URL: http://nginx:8081
-      PAYMENT_SERVICE_URL: http://payment:3006
-      STAFF_SERVICE_URL: http://staff:3007
-      REPORT_SERVICE_URL: http://report:3008
+      REGISTRATION_SERVICE_URL: http://${REGISTER_HOST:-register}:3001
+      LOGIN_SERVICE_URL: http://${LOGIN_HOST:-login}:3002
+      MENU_SERVICE_URL: http://${MENU_HOST:-menu}:3003
+      INVENTORY_SERVICE_URL: http://${INVENTORY_HOST:-inventory}:3004
+      ORDER_SERVICE_URL: http://${NGINX_HOST:-nginx}:8081
+      PAYMENT_SERVICE_URL: http://${PAYMENT_HOST:-payment}:3006
+      STAFF_SERVICE_URL: http://${STAFF_HOST:-staff}:3007
+      REPORT_SERVICE_URL: http://${REPORT_HOST:-report}:3008
     ports:
       - "4000:4000"
-    networks:
-      - coffee-network
-    depends_on:
-      register:
-        condition: service_healthy
-      login:
-        condition: service_healthy
-      menu:
-        condition: service_healthy
-      inventory:
-        condition: service_healthy
-      order-a:
-        condition: service_healthy
-      order-b:
-        condition: service_healthy
-      nginx:
-        condition: service_healthy
-      payment:
-        condition: service_healthy
-      staff:
-        condition: service_healthy
-      report:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:4000/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+    healthcheck: *health
 
 networks:
   coffee-network:

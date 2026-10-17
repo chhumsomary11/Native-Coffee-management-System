@@ -6,7 +6,7 @@ services:
     pull_policy: never
     container_name: coffee-register
     init: true
-    restart: unless-stopped
+    restart: on-failure
     env_file:
       - ./register/.env
     environment:
@@ -34,7 +34,7 @@ services:
     pull_policy: never
     container_name: coffee-login
     init: true
-    restart: unless-stopped
+    restart: on-failure
     env_file:
       - ./login/.env
     environment:
@@ -61,7 +61,7 @@ services:
     pull_policy: never
     container_name: coffee-menu
     init: true
-    restart: unless-stopped
+    restart: on-failure
     env_file:
       - ./menu/.env
     environment:
@@ -88,7 +88,7 @@ services:
     pull_policy: never
     container_name: coffee-inventory
     init: true
-    restart: unless-stopped
+    restart: on-failure
     env_file:
       - ./inventory/.env
     environment:
@@ -115,7 +115,7 @@ services:
     pull_policy: never
     container_name: coffee-order-a
     init: true
-    restart: unless-stopped
+    restart: on-failure
     env_file:
       - ./order/.env
     environment:
@@ -150,7 +150,7 @@ services:
     pull_policy: never
     container_name: coffee-order-b
     init: true
-    restart: unless-stopped
+    restart: on-failure
     env_file:
       - ./order/.env
     environment:
@@ -185,7 +185,7 @@ services:
     pull_policy: never
     container_name: coffee-nginx
     init: true
-    restart: unless-stopped
+    restart: on-failure
     environment:
       ORDER_A_HOST: order-a
       ORDER_A_PORT: "3005"
@@ -201,7 +201,8 @@ services:
       order-b:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
+      test:
+        ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -212,7 +213,7 @@ services:
     pull_policy: never
     container_name: coffee-payment
     init: true
-    restart: unless-stopped
+    restart: on-failure
     env_file:
       - ./payment/.env
     environment:
@@ -243,7 +244,7 @@ services:
     pull_policy: never
     container_name: coffee-staff
     init: true
-    restart: unless-stopped
+    restart: on-failure
     env_file:
       - ./staff/.env
     environment:
@@ -271,7 +272,7 @@ services:
     pull_policy: never
     container_name: coffee-report
     init: true
-    restart: unless-stopped
+    restart: on-failure
     env_file:
       - ./report/.env
     environment:
@@ -302,7 +303,7 @@ services:
     pull_policy: never
     container_name: coffee-api-gateway
     init: true
-    restart: unless-stopped
+    restart: on-failure
     env_file:
       - ./api-gateway/.env
     environment:

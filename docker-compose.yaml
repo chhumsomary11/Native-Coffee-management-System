@@ -34,9 +34,10 @@ services:
     container_name: coffee-register
     profiles: [edge, all]
     env_file:
-      - ./register/.env
+      - ./.env
     environment:
       PORT: "3001"
+      URI: ${URI_AUTH}
       STAFF_SERVICE_URL: http://${STAFF_HOST:-staff}:3007
     ports:
       - "3001:3001"
@@ -48,9 +49,10 @@ services:
     container_name: coffee-login
     profiles: [edge, all]
     env_file:
-      - ./login/.env
+      - ./.env
     environment:
       PORT: "3002"
+      URI: ${URI_AUTH}
     ports:
       - "3002:3002"
     healthcheck: *health
@@ -61,9 +63,10 @@ services:
     container_name: coffee-menu
     profiles: [ec2-2, all]
     env_file:
-      - ./menu/.env
+      - ./.env
     environment:
       PORT: "3003"
+      URI: ${URI_MENU}
     ports:
       - "3003:3003"
     healthcheck: *health
@@ -74,9 +77,10 @@ services:
     container_name: coffee-inventory
     profiles: [ec2-2, all]
     env_file:
-      - ./inventory/.env
+      - ./.env
     environment:
       PORT: "3004"
+      URI: ${URI_INVENTORY}
     ports:
       - "3004:3004"
     healthcheck: *health
@@ -87,9 +91,10 @@ services:
     container_name: coffee-order-a
     profiles: [ec2-2, all]
     env_file:
-      - ./order/.env
+      - ./.env
     environment:
       PORT: "3005"
+      URI: ${URI_ORDER}
       INSTANCE_ID: order-A
       MENU_SERVICE_URL: http://${MENU_HOST:-menu}:3003
       INVENTORY_SERVICE_URL: http://${INVENTORY_HOST:-inventory}:3004
@@ -103,9 +108,10 @@ services:
     container_name: coffee-order-b
     profiles: [ec2-3, all]
     env_file:
-      - ./order/.env
+      - ./.env
     environment:
       PORT: "3005"
+      URI: ${URI_ORDER}
       INSTANCE_ID: order-B
       MENU_SERVICE_URL: http://${MENU_HOST:-menu}:3003
       INVENTORY_SERVICE_URL: http://${INVENTORY_HOST:-inventory}:3004
@@ -139,9 +145,10 @@ services:
     container_name: coffee-payment
     profiles: [ec2-2, all]
     env_file:
-      - ./payment/.env
+      - ./.env
     environment:
       PORT: "3006"
+      URI: ${URI_PAYMENT}
       ORDER_SERVICE_URL: http://${NGINX_HOST:-nginx}:8081
     ports:
       - "3006:3006"
@@ -153,9 +160,10 @@ services:
     container_name: coffee-staff
     profiles: [ec2-3, all]
     env_file:
-      - ./staff/.env
+      - ./.env
     environment:
       PORT: "3007"
+      URI: ${URI_STAFF}
       REGISTRATION_SERVICE_URL: http://${REGISTER_HOST:-register}:3001
     ports:
       - "3007:3007"
@@ -167,7 +175,7 @@ services:
     container_name: coffee-report
     profiles: [ec2-3, all]
     env_file:
-      - ./report/.env
+      - ./.env
     environment:
       PORT: "3008"
       ORDER_SERVICE_URL: http://${NGINX_HOST:-nginx}:8081
@@ -181,7 +189,7 @@ services:
     container_name: coffee-api-gateway
     profiles: [edge, all]
     env_file:
-      - ./api-gateway/.env
+      - ./.env
     environment:
       PORT: "4000"
       REGISTRATION_SERVICE_URL: http://${REGISTER_HOST:-register}:3001

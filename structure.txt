@@ -1,0 +1,57 @@
+.
+├── docker-compose.yaml
+├── .dockerignore
+├── .gitignore
+├── api-gateway
+│   ├── Dockerfile
+│   ├── gateway.js
+├── inventory
+│   ├── Dockerfile
+│   ├── dbconnect.js
+│   ├── index.js
+│   └── stockItemModel.js
+├── login
+│   ├── Dockerfile
+│   ├── authentication.js
+│   ├── dbconnect.js
+│   └── userModel.js
+├── menu
+│   ├── Dockerfile
+│   ├── dbconnect.js
+│   ├── index.js
+│   ├── menuModel.js
+├── nginx
+│   ├── Dockerfile
+│   └── nginx.conf
+├── order
+│   ├── Dockerfile
+│   ├── dbconnect.js
+│   ├── index.js
+│   ├── orderModel.js
+│   └── serviceClient.js
+├── payment
+│   ├── Dockerfile
+│   ├── dbconnect.js
+│   ├── index.js
+│   ├── paymentModel.js
+│   └── serviceClient.js
+├── register
+│   ├── Dockerfile
+│   ├── dbconnect.js
+│   ├── index.js
+│   ├── seed-admin.js
+│   ├── serviceClient.js
+│   └── userModel.js
+├── report
+│   ├── Dockerfile
+│   ├── index.js
+│   ├── serviceClient.js
+├── staff
+│   ├── Dockerfile
+│   ├── dbconnect.js
+│   ├── index.js
+│   ├── serviceClient.js
+│   ├── shiftModel.js
+│   ├── staffModel.js
+
+12 directories, 92 files
